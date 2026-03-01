@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>圣牧销售计算器 - 兼容修复版</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        :root {
+            --bg-black: #121212;
+            --card-bg: #1e1e1e;
+            --primary-orange: #ff9f0a;
+            --text-gray: #b0b0b0;
+            --accent-blue: #0a84ff;
+            --btn-red: #ff453a;
+            --btn-green: #34c759;
+            --safe-area-bottom: env(safe-area-inset-bottom);
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+        body { background-color: var(--bg-black); font-family: -apple-system, sans-serif; color: white; padding-bottom: var(--safe-area-bottom); }
+        #app { padding: 15px; max-width: 600px; margin: 0 auto; }
+
+        .header { padding: 10px 0; border-bottom: 1px solid #333; margin-bottom: 15px; }
+        .date-info h2 { font-size: 1.3rem; color: var(--primary-orange); }
+        .date-info p { font-size: 0.75rem; color: var(--text-gray); }
+
+        /* 历史记录 */
+        .history-section { background: #2c2c2e; border-radius: 12px; margin-bottom: 15px; overflow: hidden; border: 1px solid #3d3d3f; }
+        .history-header { padding: 10px 15px; display: flex; justify-content: space-between; font-size: 0.85rem; background: #3a3a3c; cursor: pointer; }
+        .history-list { padding: 10px; max-height: 200px; overflow-y: auto; }
+        .history-item { padding: 8px; border-bottom: 1px solid #444; }
+        .history-date { color: var(--accent-blue); font-size: 0.8rem; margin-bottom: 4px; display: block; }
+        .history-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-size: 0.7rem; }
+        .history-prod { background: #1e1e1e; padding: 5px; border-radius: 4px; text-align: center; border: 1px solid #333; }
+
+        /* 产品卡片 */
+        .product-card { background: var(--card-bg); border-radius: 16px; padding: 15px; margin-bottom: 15px; border: 1px solid #2c2c2e; }
+        .product-title { font-size: 1rem; font-weight: bold; margin-bottom: 12px; border-left: 4px solid var(--primary-orange); padding-left: 10px; display: flex; justify-content: space-between; align-items: center; }
+        .sale-num { font-size: 1.1rem; color: var(--btn-green); font-family: monospace; font-weight: bold; }
+
+        .input-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .field { display: flex; flex-direction: column; gap: 4px; }
+        .field label { font-size: 0.75rem; color: var(--text-gray); }
+        .input-row { display: flex; background: #2c2c2e; border-radius: 8px; overflow: hidden; border: 1px solid #3a3a3c; }
+        input { width: 100%; background: transparent; border: none; color: white; padding: 8px; font-size: 1rem; outline: none; }
+        select { background: #48484a; color: white; border: none; padding: 0 4px; font-size: 0.8rem; border-left: 1px solid #3a3a3c; }
+
+        /* 操作栏 */
+        .footer-actions { position: sticky; bottom: 15px; display: flex; flex-direction: column; gap: 10px; padding: 10px 0; background: var(--bg-black); z-index: 100; }
+        .action-row { display: flex; gap: 10px; width: 100%; }
+        
+        button { border: none; border-radius: 10px; font-weight: bold; transition: all 0.2s; cursor: pointer; }
+        .btn-reset { flex: 1; background: #3a3a3c; color: var(--btn-red); padding: 12px; font-size: 0.8rem; }
+        .btn-calc { flex: 1.5; background: var(--accent-blue); color: white; padding: 12px; font-size: 0.85rem; }
+        .btn-copy { flex: 1.5; background: #5856d6; color: white; padding: 12px; font-size: 0.85rem; }
+        .btn-archive { width: 100%; background: var(--btn-green); color: white; padding: 12px; font-size: 0.9rem; }
+        .btn-archive:disabled { background: #2c2c2e; color: #666; }
+        
+        button:active:not(:disabled) { transform: scale(0.96); opacity: 0.8; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <header class="header">
+        <div class="date-info">
+            <h2>{{ todayStr }}</h2>
+            <p>1组 = 4杯 | 兼容手机一键复制报表</p>
+        </div>
+    </header>
+
+    <div class="history-section">
+        <div class="history-header" @click="showHistory = !showHistory">
+            <span>📅 查看前三天历史记录</span>
+            <span>{{ showHistory ? '▲' : '▼' }}</span>
+        </div>
+        <div v-if="showHistory" class="history-list">
+            <div v-if="historyData.length === 0" style="text-align:center; padding: 15px; color: #666;">暂无历史</div>
+            <div v-for="log in historyData" :key="log.date" class="history-item">
+                <span class="history-date">{{ log.date }}</span>
+                <div class="history-grid">
+                    <div v-for="(p, kname) in log.products" :key="kname" class="history-prod">
+                        <div style="color: #888;">{{ p.name }}</div>
+                        <div style="font-weight: bold; color: var(--btn-green);">{{ p.sale }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div v-for="(item, key) in products" :key="key" class="product-card">
+        <div class="product-title">
+            {{ item.name }}
+            <span v-if="item.saleTotal !== null" class="sale-num">{{ formatResult(item.saleTotal) }}</span>
+        </div>
+        <div class="input-group">
+            <div class="field" v-for="f in fields" :key="f.key">
+                <label>{{ f.label }}</label>
+                <div class="input-row">
+                    <input type="number" v-model.number="item.data[f.key].val" placeholder="0" inputmode="decimal" @input="onDataChange">
+                    <select v-model="item.data[f.key].unit" @focus="recordOldUnit(item.data[f.key].unit)" @change="handleUnitChange(item.data[f.key])">
+                        <option value="group">组</option>
+                        <option value="cup">杯</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer-actions">
+        <div class="action-row">
+            <button class="btn-reset" @click="resetTodayData">重置数据</button>
+            <button class="btn-calc" @click="calculateOnly">计算结果</button>
+            <button class="btn-copy" @click="copyReport">复制今日报表</button>
+        </div>
+        <button class="btn-archive" :disabled="!isCalculated" @click="archiveData">
+            {{ isCalculated ? '确认归档并同步库存' : '确认归档并同步库存' }}
+        </button>
+    </div>
+</div>
+
+<script>
+    const { createApp, ref, reactive, onMounted } = Vue;
+
+    createApp({
+        setup() {
+            const todayStr = new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' });
+            const showHistory = ref(false);
+            const historyData = ref([]);
+            const isCalculated = ref(false);
+            const oldUnitTemp = ref('');
+
+            const fields = [
+                { label: '昨日库存', key: 'prevStock' },
+                { label: '今日来货', key: 'arrival' },
+                { label: '自己制作', key: 'produce' },
+                { label: '今日库存', key: 'todayStock' }
+            ];
+
+            const products = reactive({
+                original: { name: '原味大杯', data: initData(), saleTotal: null },
+                blueberry: { name: '草蓝', data: initData(), saleTotal: null },
+                canned: { name: '罐酸', data: initData(), saleTotal: null }
+            });
+
+            function initData() {
+                const obj = {};
+                ['prevStock', 'arrival', 'produce', 'todayStock'].forEach(k => {
+                    obj[k] = { val: null, unit: 'group' };
+                });
+                return obj;
+            }
+
+            const recordOldUnit = (u) => oldUnitTemp.value = u;
+            const handleUnitChange = (df) => {
+                if (!df.val) return;
+                const nu = df.unit; const ou = oldUnitTemp.value;
+                if (ou === 'group' && nu === 'cup') df.val = df.val * 4;
+                else if (ou === 'cup' && nu === 'group') df.val = parseFloat((df.val / 4).toFixed(2));
+                oldUnitTemp.value = nu;
+                onDataChange();
+            };
+
+            const onDataChange = () => {
+                isCalculated.value = false;
+                Object.keys(products).forEach(k => products[k].saleTotal = null);
+            };
+
+            const formatResult = (tc) => {
+                if (tc < 0) return "异常";
+                return parseFloat((tc / 4).toFixed(2)) + "组";
+            };
+
+            const calculateOnly = () => {
+                Object.keys(products).forEach(key => {
+                    const p = products[key].data;
+                    const stockIn = (parseFloat(p.prevStock.val) || 0) * (p.prevStock.unit === 'group' ? 4 : 1) + 
+                                    (parseFloat(p.arrival.val) || 0) * (p.arrival.unit === 'group' ? 4 : 1) + 
+                                    (parseFloat(p.produce.val) || 0) * (p.produce.unit === 'group' ? 4 : 1);
+                    const stockOut = (parseFloat(p.todayStock.val) || 0) * (p.todayStock.unit === 'group' ? 4 : 1);
+                    products[key].saleTotal = stockIn - stockOut;
+                });
+                isCalculated.value = true;
+            };
+
+            // 【增强版复制功能：兼容所有手机浏览器】
+            const copyReport = () => {
+                const d = new Date();
+                const dateKey = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+                const getVal = (p, k) => {
+                    const field = products[p].data[k];
+                    const v = field.val !== null ? field.val : 0;
+                    const u = field.unit === 'group' ? '组' : '杯';
+                    return v + u;
+                };
+
+                const template = `${dateKey}
+【原味大杯】
+昨天剩余 ${getVal('original', 'prevStock')}
+今日来货 ${getVal('original', 'arrival')}
+自己制作 ${getVal('original', 'produce')}
+今天剩余 ${getVal('original', 'todayStock')}
+【草蓝】
+昨天剩余 ${getVal('blueberry', 'prevStock')}
+今日来货 ${getVal('blueberry', 'arrival')}
+今日剩余 ${getVal('blueberry', 'todayStock')}
+【罐酸】
+昨天剩余 ${getVal('canned', 'prevStock')}
+今日来货 ${getVal('canned', 'arrival')}
+今天剩余 ${getVal('canned', 'todayStock')}`;
+
+                // 优先尝试现代接口
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(template).then(() => {
+                        alert('报表已成功复制！');
+                    }).catch(() => {
+                        fallbackCopy(template);
+                    });
+                } else {
+                    fallbackCopy(template);
+                }
+            };
+
+            // 备选方案：创建一个隐藏文本框进行复制
+            const fallbackCopy = (text) => {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                // 防止页面自动滚动
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                textArea.style.top = "0";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                textArea.setSelectionRange(0, 99999); // 兼容 iOS
+                
+                try {
+                    document.execCommand('copy');
+                    alert('报表已成功复制！');
+                } catch (err) {
+                    alert('复制失败，请截图。错误：' + err);
+                }
+                document.body.removeChild(textArea);
+            };
+
+            const archiveData = () => {
+                if (!confirm('确认核对无误并存档吗？')) return;
+                const d = new Date();
+                const dateKey = `${d.getMonth() + 1}月${d.getDate()}日`;
+                const dailyLog = { date: dateKey, products: {} };
+                Object.keys(products).forEach(key => {
+                    dailyLog.products[key] = { name: products[key].name, sale: formatResult(products[key].saleTotal) };
+                });
+                let logs = JSON.parse(localStorage.getItem('milk_vfinal_logs') || '[]');
+                logs = logs.filter(l => l.date !== dateKey);
+                logs.unshift(dailyLog);
+                localStorage.setItem('milk_vfinal_logs', JSON.stringify(logs.slice(0, 10)));
+                const nextPrev = {};
+                Object.keys(products).forEach(key => { nextPrev[key] = { ...products[key].data.todayStock }; });
+                localStorage.setItem('milk_vfinal_prev', JSON.stringify(nextPrev));
+                isCalculated.value = false;
+                loadHistory();
+                alert('归档成功！库存已同步。');
+            };
+
+            const resetTodayData = () => {
+                if (!confirm('确定要重置吗？')) return;
+                Object.keys(products).forEach(key => {
+                    const p = products[key].data;
+                    p.arrival.val = null; p.produce.val = null; p.todayStock.val = null;
+                    products[key].saleTotal = null;
+                });
+                isCalculated.value = false;
+            };
+
+            const loadHistory = () => {
+                const logs = JSON.parse(localStorage.getItem('milk_vfinal_logs') || '[]');
+                const today = `${new Date().getMonth() + 1}月${new Date().getDate()}日`;
+                historyData.value = logs.filter(l => l.date !== today).slice(0, 3);
+            };
+
+            const loadSavedStock = () => {
+                const saved = localStorage.getItem('milk_vfinal_prev');
+                if (saved) {
+                    const prev = JSON.parse(saved);
+                    Object.keys(prev).forEach(key => { if (products[key]) products[key].data.prevStock = prev[key]; });
+                }
+            };
+
+            onMounted(() => { loadSavedStock(); loadHistory(); });
+
+            return { todayStr, products, fields, calculateOnly, archiveData, formatResult, showHistory, historyData, resetTodayData, handleUnitChange, recordOldUnit, isCalculated, onDataChange, copyReport };
+        }
+    }).mount('#app');
+</script>
+</body>
+</html> 
